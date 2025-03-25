@@ -1,4 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use clap::{crate_name, crate_version, App, AppSettings, Arg};
 use humansize::file_size_opts::{self, FileSizeOpts};
@@ -7,7 +9,13 @@ use num_format::{Locale, ToFormattedString};
 
 use diskus::{Error, FilesizeType, Walk};
 
-fn print_result(size: u64, errors: &[Error], size_format: &FileSizeOpts, verbose: bool) {
+fn print_result<P: AsRef<Path>>(
+    path: P,
+    size: u64,
+    errors: &[Error],
+    size_format: &FileSizeOpts,
+    verbose: bool,
+) {
     if verbose {
         for err in errors {
             match err {
@@ -33,12 +41,13 @@ fn print_result(size: u64, errors: &[Error], size_format: &FileSizeOpts, verbose
 
     if atty::is(atty::Stream::Stdout) {
         println!(
-            "{} ({:} bytes)",
+            "{} ({:} bytes)\t{}",
             size.file_size(size_format).unwrap(),
-            size.to_formatted_string(&Locale::en)
+            size.to_formatted_string(&Locale::en),
+            path.as_ref().to_str().unwrap()
         );
     } else {
-        println!("{}", size);
+        println!("{}\t{:?}", size, path.as_ref().to_str().unwrap());
     }
 }
 
@@ -118,7 +127,26 @@ fn main() {
 
     let verbose = matches.is_present("verbose");
 
-    let walk = Walk::new(&paths, num_threads, filesize_type);
-    let (size, errors) = walk.run();
-    print_result(size, &errors, &size_format, verbose);
+    let total_size: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+    let mut handles = Vec::new();
+
+    for path in paths {
+        let total_size = Arc::clone(&total_size);
+        let th = thread::spawn(move || {
+            let path_copy = vec![path.clone()];
+            let walk = Walk::new(&path_copy, num_threads, filesize_type);
+            let (size, errors) = walk.run();
+            print_result(&path, size, &errors, &size_format, verbose);
+
+            let mut total_size = total_size.lock().unwrap();
+            *total_size += size;
+        });
+        handles.push(th);
+    }
+
+    for h in handles {
+        h.join().unwrap()
+    }
+    println!("\nTotal:");
+    print_result("", *total_size.lock().unwrap(), &[], &size_format, verbose);
 }
