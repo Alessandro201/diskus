@@ -198,7 +198,7 @@ impl Walk {
         receiver_thread.join().unwrap()
     }
 
-    pub fn run_and_print(&self, size_format: FileSizeOpts, verbose: bool) {
+    pub fn run_and_print(&self, size_format: FileSizeOpts, total: bool, verbose: bool) {
         let (tx, rx) = channel::unbounded();
 
         let receiver_thread = thread::spawn(move || {
@@ -246,9 +246,11 @@ impl Walk {
                 );
             }
 
-            let total_size = sizes.values().sum();
-            println!("\n{}", "Total:".cyan().bold());
-            print_result("", Some(total_size), None, &size_format);
+            if total {
+                let total_size = sizes.values().sum();
+                println!("\n{}", "Total:".cyan().bold());
+                print_result("", Some(total_size), None, &size_format);
+            }
         });
 
         let pool = rayon::ThreadPoolBuilder::new()

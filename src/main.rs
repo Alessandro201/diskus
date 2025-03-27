@@ -35,6 +35,13 @@ fn main() {
                 .help("Output format for file sizes (decimal: MB, binary: MiB)"),
         )
         .arg(
+            Arg::with_name("total")
+                .long("total")
+                .short("t")
+                .takes_value(false)
+                .help("Print the total size"),
+        )
+        .arg(
             Arg::with_name("verbose")
                 .long("verbose")
                 .short("v")
@@ -78,8 +85,10 @@ fn main() {
         _ => file_size_opts::BINARY,
     };
 
+    let print_total: bool = matches.is_present("total");
+
     let verbose = matches.is_present("verbose");
 
     let walk = Walk::new(paths, num_threads, filesize_type);
-    walk.run_and_print(size_format, verbose);
+    walk.run_and_print(size_format, print_total, verbose);
 }
