@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::exit;
 use std::thread;
+use std::{fs, io};
 
 use crossbeam_channel as channel;
 
@@ -13,11 +15,22 @@ use rayon::{self, prelude::*};
 use crate::filesize::FilesizeType;
 use crate::unique_id::{generate_unique_id, UniqueID};
 
+fn safe_write(s: String) {
+    match io::stdout().write_all(s.as_bytes()) {
+        Ok(_) => {}
+        Err(ref err) if err.kind() == io::ErrorKind::BrokenPipe => exit(0),
+        Err(ref err) => {
+            eprintln!("Unexpected err: {:?}", err);
+            exit(1)
+        }
+    }
+}
+
 fn print_result<P: AsRef<Path>>(
     path: P,
     size: Option<u64>,
     error: Option<Error>,
-    size_format: &FileSizeOpts,
+    size_format: Option<&FileSizeOpts>,
 ) {
     if let Some(err) = error {
         match err {
@@ -39,14 +52,30 @@ fn print_result<P: AsRef<Path>>(
     }
 
     if let Some(size) = size {
-        if atty::is(atty::Stream::Stdout) {
-            println!(
-                "{: >10}    {}",
+        // if atty::is(atty::Stream::Stdout) {
+        //     println!(
+        //         "{: >10}    {}",
+        //         size.file_size(size_format).unwrap(),
+        //         path.as_ref().to_str().unwrap()
+        //     );
+        // } else {
+        //     println!("{}\t{:?}", size, path.as_ref().to_str().unwrap());
+        // }
+
+        if let Some(size_format) = size_format {
+            safe_write(format!(
+                "{: >10}    {}\n",
                 size.file_size(size_format).unwrap(),
                 path.as_ref().to_str().unwrap()
-            );
+            ));
+            // println!(
+            //     "{: >10}    {}",
+            //     size.file_size(size_format).unwrap(),
+            //     path.as_ref().to_str().unwrap()
+            // );
         } else {
-            println!("{}\t{:?}", size, path.as_ref().to_str().unwrap());
+            safe_write(format!("{}\t{}\n", size, path.as_ref().to_str().unwrap()));
+            // println!("{}\t{:?}", size, path.as_ref().to_str().unwrap());
         }
     }
 }
@@ -199,6 +228,8 @@ impl Walk {
     }
 
     pub fn run_and_print(&self, size_format: FileSizeOpts, total: bool, verbose: bool) {
+
+    pub fn run_and_print(&self, size_format: Option<FileSizeOpts>, total: bool, verbose: bool) {
         let (tx, rx) = channel::unbounded();
 
         let receiver_thread = thread::spawn(move || {
@@ -225,7 +256,7 @@ impl Walk {
                     }
                     Message::Error { error } => {
                         if verbose {
-                            print_result("", None, Some(error), &size_format)
+                            print_result("", None, Some(error), size_format.as_ref())
                         } else {
                             tainted_results = true;
                         }
@@ -234,7 +265,7 @@ impl Walk {
                         &path,
                         sizes.get(&path).map(|s| s.to_owned()),
                         None,
-                        &size_format,
+                        size_format.as_ref(),
                     ),
                 }
             }
@@ -249,7 +280,7 @@ impl Walk {
             if total {
                 let total_size = sizes.values().sum();
                 println!("\n{}", "Total:".cyan().bold());
-                print_result("", Some(total_size), None, &size_format);
+                print_result("", Some(total_size), None, size_format.as_ref());
             }
         });
 
