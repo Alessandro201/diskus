@@ -15,11 +15,12 @@ fn size_of_single_file() -> Result<(), Box<dyn Error>> {
 
     let num_threads = 1;
     let root_directories = &[file_path];
-    let walk = Walk::new(root_directories, num_threads, FilesizeType::ApparentSize);
-    let (size_in_bytes, errors) = walk.run();
+    let walk = Walk::new(root_directories.to_vec(), num_threads, FilesizeType::ApparentSize);
+    let (sizes_in_bytes, errors) = walk.run();
+    let (_dir, size_in_bytes) = sizes_in_bytes.first().expect("Should not be empty");
 
     assert!(errors.is_empty());
-    assert_eq!(size_in_bytes, 100);
+    assert_eq!(*size_in_bytes, 100);
 
     Ok(())
 }

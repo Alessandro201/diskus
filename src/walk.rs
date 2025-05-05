@@ -179,27 +179,26 @@ impl Walk {
         }
     }
 
-    // pub fn run(&self) -> (Vec<(PathBuf, u64)>, Vec<Error>) {
     pub fn run(&self) -> (Vec<(PathBuf, u64)>, Vec<Error>) {
         let (tx, rx) = channel::unbounded();
 
         let receiver_thread = thread::spawn(move || {
             let mut ids = HashSet::new();
-            let mut roots_sizes = HashMap::new();
-            let mut error_messages: Vec<Error> = Vec::new();
+            let mut sizes = HashMap::new();
+            let mut error_messages = vec![];
             for msg in rx {
                 match msg {
                     Message::SizeEntry(unique_id, root, size) => {
                         if let Some(unique_id) = unique_id {
                             // Only count this entry if the ID has not been seen
                             if ids.insert(unique_id) {
-                                roots_sizes
+                                sizes
                                     .entry(root)
                                     .and_modify(|tot| *tot += size)
                                     .or_insert(size);
                             }
                         } else {
-                            roots_sizes
+                            sizes
                                 .entry(root)
                                 .and_modify(|tot| *tot += size)
                                 .or_insert(size);
@@ -208,14 +207,14 @@ impl Walk {
                     Message::Error { error } => {
                         error_messages.push(error);
                     }
-                    Message::FinishedEntry(_) => {}
+                    Message::FinishedEntry(_path) => {}
                 }
             }
-            let mut sizes: Vec<(PathBuf, u64)> = Vec::new();
-            for (root, size) in roots_sizes {
-                sizes.push((root.clone(), size));
+            let mut sizes_vec = vec![];
+            for (path, size) in sizes.into_iter() {
+                sizes_vec.push((path, size));
             }
-            (sizes, error_messages)
+            (sizes_vec, error_messages)
         });
 
         let pool = rayon::ThreadPoolBuilder::new()
@@ -227,7 +226,37 @@ impl Walk {
         receiver_thread.join().unwrap()
     }
 
-    pub fn run_and_print(&self, size_format: FileSizeOpts, total: bool, verbose: bool) {
+    pub fn run_and_print_sorted(
+        &self,
+        size_format: Option<FileSizeOpts>,
+        print_total: bool,
+        verbose: bool,
+    ) {
+        let (mut sizes, error_messages) = self.run();
+        sizes.sort_by(|(_p1, s1), (_p2, s2)| s1.cmp(s2));
+
+        if verbose {
+            for err in error_messages {
+                print_result("", None, Some(err), None);
+            }
+        } else if !error_messages.is_empty() {
+            eprintln!(
+                "{} the results may be tainted. Re-run with -v/--verbose to print all errors.",
+                "[diskus warning]".red().bold()
+            );
+        }
+
+        let mut total_size = 0;
+        for (path, size) in sizes {
+            total_size += size;
+            print_result(path, Some(size), None, size_format.as_ref());
+        }
+
+        if print_total {
+            println!("\n{}", "Total:".cyan().bold());
+            print_result("", Some(total_size), None, size_format.as_ref());
+        }
+    }
 
     pub fn run_and_print(&self, size_format: Option<FileSizeOpts>, total: bool, verbose: bool) {
         let (tx, rx) = channel::unbounded();

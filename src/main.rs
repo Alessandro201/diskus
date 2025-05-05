@@ -30,9 +30,9 @@ fn main() {
                 .long("size-format")
                 .takes_value(true)
                 .value_name("type")
-                .possible_values(&["decimal", "binary"])
+                .possible_values(&["decimal", "binary", "bytes"])
                 .default_value("decimal")
-                .help("Output format for file sizes (decimal: MB, binary: MiB)"),
+                .help("Output format for file sizes (decimal: MB, binary: MiB, bytes: B)"),
         )
         .arg(
             Arg::with_name("total")
@@ -40,6 +40,13 @@ fn main() {
                 .short("t")
                 .takes_value(false)
                 .help("Print the total size"),
+        )
+        .arg(
+            Arg::with_name("sort")
+                .long("sort")
+                .short("s")
+                .takes_value(false)
+                .help("Sort the sizes in ascending order"),
         )
         .arg(
             Arg::with_name("verbose")
@@ -81,8 +88,9 @@ fn main() {
     };
 
     let size_format = match matches.value_of("size-format") {
-        Some("decimal") => file_size_opts::DECIMAL,
-        _ => file_size_opts::BINARY,
+        Some("decimal") => Some(file_size_opts::DECIMAL),
+        Some("binary") => Some(file_size_opts::BINARY),
+        _ => None,
     };
 
     let print_total: bool = matches.is_present("total");
@@ -90,5 +98,10 @@ fn main() {
     let verbose = matches.is_present("verbose");
 
     let walk = Walk::new(paths, num_threads, filesize_type);
-    walk.run_and_print(size_format, print_total, verbose);
+
+    if matches.is_present("sort") {
+        walk.run_and_print_sorted(size_format, print_total, verbose);
+    } else {
+        walk.run_and_print(size_format, print_total, verbose);
+    }
 }
