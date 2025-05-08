@@ -64,7 +64,7 @@ fn print_result<P: AsRef<Path>>(
 
         if let Some(size_format) = size_format {
             safe_write(format!(
-                "{: >10}    {}\n",
+                "{: >10}\t{}\n",
                 size.file_size(size_format).unwrap(),
                 path.as_ref().to_str().unwrap()
             ));
